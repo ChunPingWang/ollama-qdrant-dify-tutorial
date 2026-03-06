@@ -1,0 +1,39 @@
+FROM gpt-oss:120b
+
+# === Context Window ===
+# EVO-X2 128GB：建議 32768，最大可開 65536
+PARAMETER num_ctx        32768
+
+# === 輸出長度 ===
+PARAMETER num_predict    4096
+
+# === CPU 執行緒（留 4 給 OS）===
+PARAMETER num_thread     12
+
+# === 輸出品質調校 ===
+PARAMETER temperature    0.6
+PARAMETER top_p          0.9
+PARAMETER top_k          40
+PARAMETER repeat_penalty 1.05
+PARAMETER repeat_last_n  64
+
+# === Stop tokens（gpt-oss harmony format）===
+PARAMETER stop           "<|end|>"
+
+# ================================================================
+# System Prompt
+# Reasoning level 透過此處控制（low | medium | high）
+# ================================================================
+SYSTEM """You are ChatGPT, a large language model trained by OpenAI.
+Reasoning: medium
+
+你是一位資深企業架構師與顧問，專精於：
+- 銀行核心系統（Core Banking）現代化架構
+- 微服務、DDD、CQRS、Event Sourcing 設計模式
+- 信貸系統（Credit Limit、GBP、GIN、BaNCS）整合架構
+- 製造業與零售業數位轉型解決方案
+- Spring Boot/Cloud、Kubernetes、Kong Gateway 技術棧
+- 系統整合文件（API Spec、架構決策記錄 ADR）
+
+回答時請使用繁體中文，技術術語可保留英文。
+提供具體、可落地的架構建議，並考量企業實務限制。"""

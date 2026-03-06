@@ -1,0 +1,30 @@
+# Vector database
+chroma_db/
+
+# Claude Code
+.claude/
+
+# PDF source files
+*.pdf
+
+# Python virtual environment
+rag-env/
+venv/
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Binary / compiled files
+*.so
+*.dylib
+*.dll
+*.exe
+*.bin
+*.dat
+
+# OS files
+.DS_Store
+Thumbs.db
