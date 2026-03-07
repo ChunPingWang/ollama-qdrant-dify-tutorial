@@ -2,6 +2,47 @@
 
 使用本地 Ollama 的 `bank-architect` 模型，搭配《Microservices Patterns》(微服務設計模式) PDF 建立 RAG (Retrieval-Augmented Generation) 知識庫，實現基於書籍內容的智慧問答。
 
+## 分支說明
+
+本專案提供**兩種實作方式**，分別在不同分支：
+
+| 分支 | 實作方式 | 說明 |
+|------|---------|------|
+| **`main`** ← 目前分支 | 手工打造 | 直接使用 chromadb + rank_bm25 + ollama，完全自己控制每個環節 |
+| **`langchain-rag`** | LangChain 框架 | 使用 LangChain 的 Loader、Splitter、Retriever、Chain 等抽象層 |
+
+### 兩種做法的對比
+
+| 面向 | `main` (手工打造) | `langchain-rag` (LangChain) |
+|------|-----------------|---------------------------|
+| **程式碼量** | ~600 行（4 個檔案） | ~300 行（3 個檔案） |
+| **切塊** | 手寫固定長度切塊 | `RecursiveCharacterTextSplitter`（依句號、換行智慧切割） |
+| **混合檢索** | 手寫 RRF 融合 | `EnsembleRetriever`（內建 RRF） |
+| **Query Expansion** | 手寫中英術語表 | 未內建（需自行擴充或用 `MultiQueryRetriever`） |
+| **BM25** | `rank_bm25` + `jieba` 斷詞 | `BM25Retriever`（內建，預設英文 tokenizer） |
+| **RAG Chain** | 手寫 HTTP API 呼叫 | LCEL: `retriever | prompt | llm | parser` |
+| **串流輸出** | 手寫 HTTP streaming | `chain.stream()` 一行搞定 |
+
+### 效能對比（12 題 Golden QA Set）
+
+| 指標 | `main` (手工 + 術語擴展) | `langchain-rag` |
+|------|----------------------|-----------------|
+| **Hit Rate** | **100%** (12/12) | 91.7% (11/12) |
+| **MRR** | **0.917** | 0.693 |
+| **Precision** | **0.925** | 0.404 |
+
+> `main` 分支效能較佳，主要因為：
+> 1. **Query Expansion** — 手寫的中英術語表對雙語 PDF 有針對性的改善
+> 2. **jieba 斷詞** — BM25 使用中文斷詞器，LangChain 預設使用英文 tokenizer
+> 3. **RRF 可調參** — 手寫版的 RRF_K 和權重完全可控並已經過自動調參
+
+### 如何選擇
+
+- **選 `main`**：追求最佳效能、想深入理解 RAG 原理、需要精確控制每個環節
+- **選 `langchain-rag`**：快速原型、想切換不同 LLM/向量資料庫後端、偏好框架抽象
+
+---
+
 ## 架構總覽
 
 ```
