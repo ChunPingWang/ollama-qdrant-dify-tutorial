@@ -1,0 +1,67 @@
+app:
+  title: Backstage 文件管理系統
+  baseUrl: http://localhost:3000
+
+organization:
+  name: DocsHub
+
+backend:
+  baseUrl: http://localhost:7007
+  listen:
+    port: 7007
+  cors:
+    origin: http://localhost:3000
+    methods: [GET, POST, PUT, DELETE]
+    credentials: true
+  database:
+    client: better-sqlite3
+    connection: ':memory:'
+
+# 文件管理系統專用設定
+docsSystem:
+  # 上傳檔案存放路徑
+  uploadDir: /tmp/backstage-docs/uploads
+  parsedDir: /tmp/backstage-docs/parsed
+  # 單檔大小上限 (bytes)
+  maxFileSize: 52428800  # 50MB
+
+  # ChromaDB 向量資料庫
+  chromaDb:
+    host: localhost
+    port: 8000
+
+  # Ollama Embedding / LLM
+  ollama:
+    baseUrl: http://localhost:11434
+    embedModel: nomic-embed-text
+    chatModel: llama3
+
+  # 向量切片設定
+  chunking:
+    chunkSize: 1500
+    chunkOverlap: 300
+
+  # 預設模組（系統啟動時自動註冊）
+  defaultModules:
+    - id: microservices
+      name: 微服務設計模式
+      description: Microservices Patterns 相關文件
+      tags: [architecture, microservices, patterns]
+    - id: banking
+      name: 銀行系統架構
+      description: 銀行核心系統與金融科技文件
+      tags: [banking, fintech, core-system]
+    - id: devops
+      name: DevOps 與 SRE
+      description: CI/CD、容器化、可觀測性文件
+      tags: [devops, sre, kubernetes, observability]
+
+proxy:
+  endpoints: {}
+
+techdocs:
+  builder: local
+  generator:
+    runIn: local
+  publisher:
+    type: local

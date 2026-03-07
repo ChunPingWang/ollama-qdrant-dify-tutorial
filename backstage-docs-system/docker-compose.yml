@@ -1,0 +1,33 @@
+# 文件管理系統基礎設施
+# ChromaDB (向量資料庫) + Ollama (Embedding/LLM)
+
+services:
+  # ── ChromaDB 向量資料庫 ────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+
+  # ── Ollama LLM + Embedding 服務 ───────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  chroma_data:
+  ollama_data:
