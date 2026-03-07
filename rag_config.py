@@ -18,8 +18,8 @@ LLM_MODEL = "bank-architect"
 
 # ── 檢索參數 ─────────────────────────────────────────
 TOP_K = 10
-VECTOR_WEIGHT = 0.6  # RRF 中向量檢索的權重
-BM25_WEIGHT = 0.4    # RRF 中 BM25 的權重
+VECTOR_WEIGHT = 0.4  # RRF 中向量檢索的權重（自動調參最佳值）
+BM25_WEIGHT = 0.6    # RRF 中 BM25 的權重（自動調參最佳值）
 RRF_K = 60           # Reciprocal Rank Fusion 常數
 
 # ── 切塊參數（改善後）──────────────────────────────────

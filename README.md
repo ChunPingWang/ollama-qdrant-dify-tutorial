@@ -38,6 +38,7 @@ ollama/
 ├── ingest.py                                    # PDF 切塊 → 向量化 + BM25 索引
 ├── rag_query.py                                 # RAG 查詢介面 (混合檢索)
 ├── rag_eval.py                                  # RAG 品質評估腳本 (12 題 Golden QA)
+├── rag_tuner.py                                 # 自動調參工具 (Grid Search)
 ├── Microservices_Patterns_dual_Kimi+Qwen.pdf    # 來源 PDF (522 頁，英中雙語)
 ├── chroma_db/                                   # ChromaDB 向量資料庫 (自動產生)
 └── bm25_index.pkl                               # BM25 關鍵字索引 (自動產生)
@@ -49,6 +50,7 @@ ollama/
 | `ingest.py` | 將 PDF 向量化並建立 BM25 索引 | 首次使用或更換 PDF / 調參時 |
 | `rag_query.py` | 互動式 / 命令列 RAG 查詢 | 日常查詢 |
 | `rag_eval.py` | 評估檢索與生成品質 | 調參後驗證效果 |
+| `rag_tuner.py` | 自動搜尋最佳參數 | 換 PDF 或調參時 |
 
 ## 前置需求
 
@@ -184,14 +186,14 @@ python3 rag_eval.py --retrieval-only
 
 ## 調參記錄與最佳化
 
-### v2 改善成果（混合檢索）
+### 改善歷程
 
-| 指標 | v1 (純向量) | v2 (混合檢索) | 提升 |
-|------|-----------|-------------|------|
-| **Hit Rate@K** | 66.7% (8/12) | **100%** (12/12) | +33.3% |
-| **MRR@K** | 0.440 | **0.903** | +105% |
-| **Precision@K** | 0.281 | **0.842** | +200% |
-| **Avg Top1 Similarity** | 0.734 | **0.772** | +5.2% |
+| 指標 | v1 (純向量) | v2 (混合檢索) | v3 (自動調參) |
+|------|-----------|-------------|-------------|
+| **Hit Rate@K** | 66.7% (8/12) | 100% (12/12) | **100%** (12/12) |
+| **MRR@K** | 0.440 | 0.903 | **0.917** |
+| **Precision@K** | 0.281 | 0.842 | **0.925** |
+| **綜合分數** | — | 0.928 | **0.952** |
 
 ### 參數對照表
 
@@ -207,12 +209,12 @@ python3 rag_eval.py --retrieval-only
 
 #### 檢索參數
 
-| 參數 | v1 | v2 (當前) | 調參理由 |
-|------|-----|----------|--------|
-| `TOP_K` | 8 | **10** | 增加候選數量以提高召回率 |
-| `VECTOR_WEIGHT` | — | **0.6** | 向量搜尋在 RRF 中的權重（語意匹配為主） |
-| `BM25_WEIGHT` | — | **0.4** | BM25 在 RRF 中的權重（關鍵字精確匹配為輔） |
-| `RRF_K` | — | **60** | Reciprocal Rank Fusion 平滑常數（標準值） |
+| 參數 | v1 | v2 (手動) | v3 (自動調參) | 調參理由 |
+|------|-----|----------|-------------|--------|
+| `TOP_K` | 8 | 10 | **10** | 增加候選數量以提高召回率 |
+| `VECTOR_WEIGHT` | — | 0.6 | **0.4** | 自動調參發現 BM25 對此雙語文件更重要 |
+| `BM25_WEIGHT` | — | 0.4 | **0.6** | 專有名詞多，關鍵字匹配權重應更高 |
+| `RRF_K` | — | 60 | **60** | Reciprocal Rank Fusion 平滑常數（標準值） |
 
 #### 三項關鍵改善
 
@@ -269,6 +271,29 @@ python3 rag_eval.py --retrieval-only
 - **TOP_K**: 8~15，更多候選提高召回但增加 LLM context 負擔
 - **VECTOR_WEIGHT / BM25_WEIGHT**: 調整兩路搜尋的相對權重
 - **Embedding 模型**: 可嘗試 `mxbai-embed-large` 或 `bge-m3`（多語言）
+
+### 自動調參 (Auto-Tuning)
+
+提供 `rag_tuner.py` 自動搜尋最佳參數：
+
+```bash
+# 快速模式：僅調檢索參數（不重建索引，約 1 分鐘）
+python3 rag_tuner.py --quick
+
+# 完整模式：含切塊參數 × 檢索參數的 Grid Search（需重建索引，較慢）
+python3 rag_tuner.py
+```
+
+**快速模式**搜尋空間：
+- `TOP_K`: [8, 10, 12, 15]
+- `VECTOR_WEIGHT`: [0.4, 0.5, 0.6, 0.7, 0.8]
+
+**完整模式**額外搜尋：
+- `CHUNK_SIZE`: [600, 800, 1000]
+- `CHUNK_OVERLAP`: [150, 200, 300]
+
+自動調參會輸出 Top 5 最佳參數組合，以及可直接貼入 `rag_config.py` 的設定。
+綜合分數公式：`Score = HitRate×0.4 + MRR×0.35 + Precision×0.25`
 
 ## 自訂設定
 
