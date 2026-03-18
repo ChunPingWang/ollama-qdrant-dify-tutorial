@@ -1,11 +1,16 @@
-# Vector database
+# Vector databases
 chroma_db/
+lc_chroma_db/
+qdrant_storage/
 
 # Claude Code
 .claude/
 
-# PDF source files
+# PDF source files (large binaries)
 *.pdf
+
+# BM25 index
+*.pkl
 
 # Python virtual environment
 rag-env/
@@ -28,3 +33,9 @@ __pycache__/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Docs directory (user-specific documents)
+docs/
+
+# Backstage system (separate project)
+backstage-docs-system/
