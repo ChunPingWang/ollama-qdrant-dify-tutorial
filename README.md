@@ -262,16 +262,71 @@ Settings → Model Providers → Ollama
 
 ---
 
+## 知識庫資料流
+
+```
+                    ┌──────────────────────────────────────────────┐
+                    │           Qdrant 向量資料庫                    │
+                    │         (collection: bank_docs)               │
+                    └──────────┬───────────────┬───────────────────┘
+                               │               │
+                    ╔══════════╧═══╗   ╔═══════╧══════════╗
+                    ║   寫入路徑    ║   ║    讀取路徑       ║
+                    ╚══════════╤═══╝   ╚═══════╤══════════╝
+                               │               │
+              ┌────────────────┼───────┐       │
+              │                │       │       │
+        ingest.py    ingest_stdin.py   Dify    rag_query.py
+        (批次匯入)    (即時匯入)    (知識庫)    (混合檢索)
+```
+
+### 寫入：兩種匯入方式
+
+| 工具 | 用途 | 範例 |
+|---|---|---|
+| `ingest.py` | 批次匯入 `docs/` 下所有 PDF/TXT/MD | `python ingest.py` |
+| `ingest_stdin.py` | 即時匯入單筆文字（命令列或 stdin） | `python ingest_stdin.py "知識內容"` |
+
+`ingest_stdin.py` 用法：
+
+```bash
+# 直接輸入文字
+python ingest_stdin.py "Kubernetes Pod OOMKilled 時應檢查 limits 設定"
+
+# 指定來源標籤
+python ingest_stdin.py -s "SRE筆記" "Pod 重啟排查 SOP：先看 describe、再看 logs"
+
+# 從 pipe 讀取
+echo "重要知識..." | python ingest_stdin.py -s "opencode"
+
+# 互動模式（多行輸入，Ctrl+D 結束）
+python ingest_stdin.py -s "會議記錄"
+```
+
+### 讀取：查詢不會寫入知識庫
+
+**在 OpenCode、Dify 或 `rag_query.py` 中輸入的問題，不會自動成為 RAG 知識庫的一部分。** 查詢流程是純讀取的：
+
+1. 使用者提問
+2. 問題被向量化，在 Qdrant 中搜尋相關片段
+3. 相關片段 + 問題組合成 Prompt 送給 LLM
+4. LLM 回傳答案
+
+整個過程不會對 Qdrant 做任何寫入操作。若需要將新知識加入 RAG，必須透過 `ingest.py` 或 `ingest_stdin.py` 主動匯入。
+
+---
+
 ## 專案結構
 
 ```
 .
 ├── README.md                          # 本文件
 ├── local-llm-rag-spec.md             # 詳細規格書
-├── ingest.py                          # 文件匯入 Qdrant 工具
+├── ingest.py                          # 批次文件匯入 Qdrant（docs/ 目錄）
+├── ingest_stdin.py                    # 即時文字匯入 Qdrant（stdin/命令列）
 ├── rag_eval.py                        # RAG 效果評測腳本
-├── rag_config.py                      # RAG 共用設定（舊版 ChromaDB）
-├── rag_query.py                       # RAG 查詢工具
+├── rag_config.py                      # RAG 共用設定
+├── rag_query.py                       # RAG 混合檢索查詢工具
 ├── docs/                              # 待匯入的文件目錄
 ├── qdrant_storage/                    # Qdrant 持久化資料
 ├── Modelfile.qwen3:14b               # Qwen3 14B SRE 快速版（無 thinking）
