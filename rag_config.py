@@ -8,13 +8,20 @@ import jieba
 from rank_bm25 import BM25Okapi
 
 # ── 路徑與模型設定 ────────────────────────────────────
-BASE_DIR = "/home/galileo/workspace/ollama"
-PDF_PATH = os.path.join(BASE_DIR, "Microservices_Patterns_dual_Kimi+Qwen.pdf")
-CHROMA_DIR = os.path.join(BASE_DIR, "chroma_db")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_PATH = os.path.expanduser(
+    "~/Downloads/Hands On Microservices With Kubernetes - "
+    "Build deploy and manage scalable microservices on-kubernetes.pdf"
+)
 BM25_PATH = os.path.join(BASE_DIR, "bm25_index.pkl")
-COLLECTION_NAME = "microservices_patterns"
-EMBED_MODEL = "nomic-embed-text"
-LLM_MODEL = "bank-architect"
+
+# ── Qdrant 設定 ──────────────────────────────────────
+QDRANT_HOST = "localhost"
+QDRANT_PORT = 6333
+COLLECTION_NAME = "bank_docs"
+EMBED_MODEL = "bge-m3"
+EMBED_DIM = 1024
+LLM_MODEL = "qwen3:32b"
 
 # ── 檢索參數 ─────────────────────────────────────────
 TOP_K = 10
@@ -63,6 +70,11 @@ TERM_EXPANSION = {
     # 可觀察性
     "distributed tracing": ["distributed tracing", "分散式追蹤", "分佈式追蹤"],
     "health check": ["health check", "健康檢查", "health check api"],
+    # Kubernetes 相關
+    "kubernetes": ["kubernetes", "k8s", "kubectl", "pod", "deployment", "service"],
+    "microservices": ["microservices", "微服務", "microservice"],
+    "docker": ["docker", "container", "容器", "image", "映像"],
+    "helm": ["helm", "chart", "helm chart"],
 }
 
 
@@ -107,8 +119,20 @@ def load_bm25_index() -> dict | None:
         return pickle.load(f)
 
 
-def hybrid_search(question: str, collection, top_k: int = TOP_K) -> list[dict]:
-    """混合檢索：向量搜尋 + BM25，用 RRF 融合排序。"""
+def get_qdrant_client():
+    """取得 Qdrant 客戶端。"""
+    from qdrant_client import QdrantClient
+    return QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+
+
+def hybrid_search(question: str, client, top_k: int = TOP_K) -> list[dict]:
+    """混合檢索：向量搜尋 + BM25，用 RRF 融合排序。
+
+    Args:
+        question: 查詢問題
+        client: QdrantClient 實例
+        top_k: 回傳前 K 筆結果
+    """
     import ollama
 
     # 1. Query expansion
@@ -116,19 +140,23 @@ def hybrid_search(question: str, collection, top_k: int = TOP_K) -> list[dict]:
 
     # 2. 向量檢索（用擴展後的 query）
     q_embed = ollama.embed(model=EMBED_MODEL, input=expanded)["embeddings"][0]
-    vec_results = collection.query(
-        query_embeddings=[q_embed],
-        n_results=min(top_k * 3, 50),  # 多取一些候選，後續融合
-    )
-    vec_ids = vec_results["ids"][0]
-    vec_docs = vec_results["documents"][0]
-    vec_metas = vec_results["metadatas"][0]
-    vec_dists = vec_results["distances"][0]
+    vec_results = client.query_points(
+        collection_name=COLLECTION_NAME,
+        query=q_embed,
+        limit=min(top_k * 3, 50),
+    ).points
 
     # 建立 id → 資料的映射
     doc_map = {}
-    for i, (did, doc, meta, dist) in enumerate(zip(vec_ids, vec_docs, vec_metas, vec_dists)):
-        doc_map[did] = {"text": doc, "page": meta["page"], "similarity": 1 - dist}
+    vec_ids = []
+    for hit in vec_results:
+        did = str(hit.id)
+        vec_ids.append(did)
+        doc_map[did] = {
+            "text": hit.payload.get("text", ""),
+            "page": hit.payload.get("page", 0),
+            "similarity": hit.score,
+        }
 
     # 3. BM25 檢索
     bm25_data = load_bm25_index()
@@ -144,12 +172,11 @@ def hybrid_search(question: str, collection, top_k: int = TOP_K) -> list[dict]:
             if did not in doc_map:
                 doc_map[did] = {
                     "text": bm25_data["documents"][idx],
-                    "page": 0,  # 從 BM25 來的，需要從 collection 取 metadata
+                    "page": 0,
                     "similarity": 0.0,
                 }
 
     # 4. RRF 融合
-    # 向量排名
     vec_ranking = {did: rank + 1 for rank, did in enumerate(vec_ids)}
 
     rrf_scores = {}
@@ -164,18 +191,9 @@ def hybrid_search(question: str, collection, top_k: int = TOP_K) -> list[dict]:
     # 5. 排序取 top_k
     sorted_ids = sorted(rrf_scores, key=lambda x: rrf_scores[x], reverse=True)[:top_k]
 
-    # 6. 補全 metadata（BM25 獨有的結果需要從 collection 取 page）
+    # 6. 組裝結果
     results = []
     for did in sorted_ids:
-        info = doc_map[did]
-        if info["page"] == 0:
-            # 從 ChromaDB 取 metadata
-            try:
-                meta = collection.get(ids=[did])
-                if meta["metadatas"]:
-                    info["page"] = meta["metadatas"][0].get("page", 0)
-            except Exception:
-                pass
-        results.append(info)
+        results.append(doc_map[did])
 
     return results

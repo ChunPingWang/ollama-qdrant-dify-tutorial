@@ -7,30 +7,29 @@ RAG 查詢介面：混合檢索（向量 + BM25）+ Query Expansion，送給 LLM
 import json
 import sys
 import urllib.request
-import chromadb
 
 from rag_config import (
-    CHROMA_DIR, COLLECTION_NAME, LLM_MODEL, TOP_K,
-    hybrid_search, expand_query,
+    COLLECTION_NAME, LLM_MODEL, TOP_K,
+    hybrid_search, expand_query, get_qdrant_client,
 )
 
-SYSTEM_PROMPT = """你是一位資深的銀行系統架構師 (bank-architect)，專精於微服務架構設計。
-你的知識來源是《Microservices Patterns》(微服務設計模式) 這本書。
+SYSTEM_PROMPT = """你是一位資深的系統架構師，專精於微服務架構設計與 Kubernetes 容器編排。
+你的知識來源是《Hands On Microservices With Kubernetes》這本書。
 
 回答規則：
 1. 根據提供的參考資料 (Context) 來回答問題
 2. 如果參考資料中找不到答案，請誠實說明
-3. 回答時盡量引用具體的模式名稱、頁碼
+3. 回答時盡量引用具體的章節、頁碼
 4. 以繁體中文回答，但專有名詞可保留英文
-5. 結合銀行/金融場景給出實際建議
+5. 結合實際場景給出建議
 """
 
 
-def query_rag(question: str, collection, verbose: bool = False) -> str:
+def query_rag(question: str, client, verbose: bool = False) -> str:
     """執行 RAG 查詢：混合檢索 → 組合 prompt → 呼叫 LLM。"""
 
     # 1. 混合檢索（向量 + BM25 + Query Expansion）
-    results = hybrid_search(question, collection, top_k=TOP_K)
+    results = hybrid_search(question, client, top_k=TOP_K)
 
     # 2. 組合 context
     context_parts = []
@@ -99,14 +98,14 @@ def query_rag(question: str, collection, verbose: bool = False) -> str:
 
 
 def main():
-    client = chromadb.PersistentClient(path=CHROMA_DIR)
+    client = get_qdrant_client()
     try:
-        collection = client.get_collection(COLLECTION_NAME)
+        info = client.get_collection(COLLECTION_NAME)
+        count = info.points_count
     except Exception:
         print("錯誤: 找不到向量資料庫！請先執行 ingest.py 建立資料庫。")
         sys.exit(1)
 
-    count = collection.count()
     print(f"已載入向量資料庫: {count} 個文字塊")
     print(f"LLM 模型: {LLM_MODEL}")
     print(f"檢索模式: 混合 (向量 + BM25 + Query Expansion)")
@@ -115,7 +114,7 @@ def main():
     if len(sys.argv) > 1:
         question = " ".join(sys.argv[1:])
         print(f"\n問題: {question}\n")
-        query_rag(question, collection, verbose=True)
+        query_rag(question, client, verbose=True)
         return
 
     # 互動模式
@@ -125,7 +124,7 @@ def main():
     verbose = False
     while True:
         try:
-            question = input("\n🏦 問題> ").strip()
+            question = input("\n📚 問題> ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再見!")
             break
@@ -141,7 +140,7 @@ def main():
             continue
 
         print()
-        query_rag(question, collection, verbose=verbose)
+        query_rag(question, client, verbose=verbose)
 
 
 if __name__ == "__main__":

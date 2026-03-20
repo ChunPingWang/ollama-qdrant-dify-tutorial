@@ -10,17 +10,14 @@ import json
 import sys
 import time
 import urllib.request
-import chromadb
-import ollama
 
 from rag_config import (
-    CHROMA_DIR, COLLECTION_NAME, EMBED_MODEL, LLM_MODEL, TOP_K,
-    hybrid_search, expand_query,
+    COLLECTION_NAME, EMBED_MODEL, LLM_MODEL, TOP_K,
+    hybrid_search, expand_query, get_qdrant_client,
 )
 
 # ── Golden QA Set ────────────────────────────────────
 # 每題包含: question, expected_keywords (判斷檢索命中的關鍵詞), golden_answer
-# 使用關鍵詞比對而非頁碼，因為雙語 PDF 的物理頁碼與書籍印刷頁碼有偏移
 GOLDEN_QA = [
     {
         "id": 1,
@@ -98,13 +95,13 @@ GOLDEN_QA = [
 
 
 def get_collection():
-    client = chromadb.PersistentClient(path=CHROMA_DIR)
-    return client.get_collection(COLLECTION_NAME)
+    """取得 Qdrant 客戶端。"""
+    return get_qdrant_client()
 
 
-def retrieve(question: str, collection, top_k: int = TOP_K) -> list[dict]:
+def retrieve(question: str, client, top_k: int = TOP_K) -> list[dict]:
     """混合檢索：向量 + BM25 + Query Expansion。"""
-    return hybrid_search(question, collection, top_k=top_k)
+    return hybrid_search(question, client, top_k=top_k)
 
 
 # ── 檢索品質指標 ──────────────────────────────────────
@@ -286,8 +283,9 @@ def run_eval(skip_generation: bool = False):
     print("RAG 評估報告")
     print("=" * 70)
 
-    collection = get_collection()
-    count = collection.count()
+    client = get_collection()
+    info = client.get_collection(COLLECTION_NAME)
+    count = info.points_count
     print(f"向量資料庫: {count} 個文字塊 | TOP_K={TOP_K} | 測試題數: {len(GOLDEN_QA)}")
 
     # 自動偵測 LLM 是否可用
@@ -311,7 +309,7 @@ def run_eval(skip_generation: bool = False):
         print(f"  Q: {question}")
 
         # 1. 檢索評估
-        retrieved = retrieve(question, collection)
+        retrieved = retrieve(question, client)
         ret_eval = eval_retrieval(qa, retrieved)
         retrieval_results.append(ret_eval)
 
