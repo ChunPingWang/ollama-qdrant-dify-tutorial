@@ -316,6 +316,97 @@ python ingest_stdin.py -s "會議記錄"
 
 ---
 
+## OpenCode 整合 RAG
+
+透過 `rag_server.py` 提供 OpenAI-compatible API，讓 OpenCode 直接使用 RAG 混合檢索。
+
+### 架構
+
+```
+OpenCode ──(OpenAI API)──▶ rag_server.py :8000
+                                │
+                      ┌─────────┴─────────┐
+                      ▼                   ▼
+               Qdrant :6333         Ollama :11434
+              (混合檢索)         (qwen3:14b-cloudnative)
+```
+
+### Step 1：啟動 RAG Server
+
+```bash
+# 確認 Qdrant 和 Ollama 已啟動，然後：
+python3 rag_server.py
+
+# 指定其他 port：
+python3 rag_server.py --port 9000
+```
+
+啟動成功會顯示：
+
+```
+Qdrant 已連線: 29736 points in 'bank_docs'
+LLM: qwen3:14b-cloudnative
+RAG Server 啟動: http://localhost:8000/v1/chat/completions
+```
+
+### Step 2：設定 OpenCode
+
+編輯 `~/.config/opencode/opencode.json`，在 `provider` 區塊中加入 `rag` provider：
+
+```json
+{
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama",
+      "options": {
+        "baseURL": "http://localhost:11434/v1"
+      },
+      "models": {
+        "qwen3:14b-cloudnative": {
+          "name": "qwen3:14b-cloudnative (fast, no think)"
+        }
+      }
+    },
+    "rag": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "RAG 知識庫",
+      "options": {
+        "baseURL": "http://localhost:8000/v1"
+      },
+      "models": {
+        "rag": {
+          "name": "RAG 混合檢索 + qwen3:14b-cloudnative"
+        }
+      }
+    }
+  }
+}
+```
+
+### Step 3：在 OpenCode 中切換模型
+
+1. 開啟 OpenCode
+2. 按 `Ctrl+K` 開啟命令選單
+3. 選擇切換模型（或直接按模型切換快捷鍵）
+4. 在模型列表中選擇 **RAG 知識庫 → rag**
+
+> **注意**：修改 `opencode.json` 後需要**重新啟動 OpenCode** 才會載入新的 provider。
+
+### 驗證 RAG Server
+
+```bash
+# 檢查 server 是否運行
+curl http://localhost:8000/v1/models
+
+# 測試 RAG 查詢
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"model":"rag","messages":[{"role":"user","content":"什麼是 saga pattern?"}],"stream":false}'
+```
+
+---
+
 ## 專案結構
 
 ```
@@ -326,7 +417,8 @@ python ingest_stdin.py -s "會議記錄"
 ├── ingest_stdin.py                    # 即時文字匯入 Qdrant（stdin/命令列）
 ├── rag_eval.py                        # RAG 效果評測腳本
 ├── rag_config.py                      # RAG 共用設定
-├── rag_query.py                       # RAG 混合檢索查詢工具
+├── rag_query.py                       # RAG 混合檢索查詢工具（CLI）
+├── rag_server.py                      # RAG OpenAI-compatible API server
 ├── docs/                              # 待匯入的文件目錄
 ├── qdrant_storage/                    # Qdrant 持久化資料
 ├── Modelfile.qwen3:14b               # Qwen3 14B SRE 快速版（無 thinking）
